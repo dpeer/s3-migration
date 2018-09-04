@@ -1,0 +1,33 @@
+{
+  "name": "s3-migration",
+  "version": "0.1.0",
+  "description": "S3 migration utility",
+  "main": "s3-uploader.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": {
+    "name": "David Peer",
+    "email": "dudi.peer@gmail.com"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/dpeer/s3-migration",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dpeer/s3-migration.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dpeer/s3-migration/issues"
+  },
+  "keywords": [
+    "aws",
+    "s3",
+    "migration"
+  ],
+  "dependencies": {
+    "async": "^2.6.1",
+    "aws-sdk": "^2.307.0",
+    "lodash": "^4.17.10",
+    "yargs": "^12.0.1"
+  }
+}
