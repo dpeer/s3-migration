@@ -1,7 +1,3 @@
-"use strict"; // support node 4
-
-//process.env.AWS_PROFILE = 'profile-name';
-
 const path = require('path');
 const fs = require('fs');
 const _ = require('lodash');
@@ -9,8 +5,8 @@ const async = require('async');
 const readline = require('readline');
 
 const argv = require('yargs')
-    .usage('Usage: $0 --accessKeyId accessKeyId --secretAccessKey secretAccessKey --region region -p srcPath -b bucketName [-d testPath] [--partSize number] [--queueSize number] [--parallelFiles number] [-i filePath] [-x filePath] [-t] [-v]')
-    .example('--accessKeyId 123 --secretAccessKey 456 --region us-east-1 -p /temp/s3 -b bucketName -d testPath --partSize 10485760 --queueSize 5 --parallelFiles 20 -i includeFoldersPath -x excludeFoldersPath -t -v')
+    .usage('Usage: $0 --accessKeyId accessKeyId --secretAccessKey secretAccessKey --region region -p srcPath -b bucketName -o outputFile [-d testPath] [--partSize number] [--queueSize number] [--parallelFiles number] [-i filePath] [-x filePath] [-t]')
+    .example('--accessKeyId 123 --secretAccessKey 456 --region us-east-1 -p /temp/s3 -b bucketName -o ./output/out-upload.json -d testPath --partSize 10485760 --queueSize 5 --parallelFiles 20 -i includeFoldersPath -x excludeFoldersPath -t')
     .describe('accessKeyId', 'AWS access key ID')
     .describe('secretAccessKey', 'AWS secret access key')
     .describe('region', 'AWS region')
@@ -34,9 +30,7 @@ const argv = require('yargs')
     .describe('t', 'Test without uploading to S3')
     .boolean('t')
     .alias('t', 'dryRun')
-    .boolean('v')
-    .alias('v', 'verbose')
-    .demandOption(['accessKeyId', 'secretAccessKey', 'region', 'p', 'b'])
+    .demandOption(['accessKeyId', 'secretAccessKey', 'region', 'p', 'b', 'o'])
     .argv;
 
 const srcPath = path.resolve(argv.srcPath);
@@ -62,32 +56,45 @@ let totalFailedFiles = 0;
 let totalFailedFilesSize = 0;
 let totalFailedEmptyFolders = 0;
 let statusIntervalTimeout;
-let outputStream;
+let outputStreamTemp;
+let outputData = {
+    srcPath: srcPath,
+    files: [],
+};
 
 function createOutputFile() {
-    if (!argv.outputFile) {
-        return;
-    }
-    outputStream = fs.createWriteStream(argv.outputFile);
-    outputStream.write('{');
-    outputStream.write(`"srcPath": "${srcPath}",\n`);
-    outputStream.write('"output": [\n');
+    let outputStream = fs.createWriteStream(argv.outputFile);
+    outputStream.write(JSON.stringify(outputData));
+    outputStream.end();
+}
+
+function createOutputFileTemp() {
+    outputStreamTemp = fs.createWriteStream(argv.outputFile + '.tmp');
+    outputStreamTemp.write('{');
+    outputStreamTemp.write(`"srcPath": "${srcPath}",\n`);
+    outputStreamTemp.write('"files": [\n');
 }
 
 function logger(data) {
-    if (!outputStream) {
+    if (!outputStreamTemp) {
         return;
     }
-    outputStream.write(`${JSON.stringify(data)},\n`);
+    outputStreamTemp.write(`${JSON.stringify(data)},\n`);
 }
 
-function closeOutputFile(summary) {
-    if (!outputStream) {
+function closeOutputFileTemp(summary) {
+    if (!outputStreamTemp) {
         return;
     }
-    outputStream.write('],\n');
-    outputStream.write(`"summary":${JSON.stringify(summary)}`);
-    outputStream.write('}');
+    outputStreamTemp.write('],\n');
+    outputStreamTemp.write(`"summary":${JSON.stringify(summary)}`);
+    outputStreamTemp.write('}');
+    outputStreamTemp.end();
+}
+
+function createOutputFile() {
+    let outputStream = fs.createWriteStream(argv.outputFile);
+    outputStream.write(JSON.stringify(outputData));
     outputStream.end();
 }
 
@@ -207,7 +214,7 @@ function uploadFile(item, callback) {
             item.uploadStatus = 1;
         }
 
-        let lineData = {
+        let outputLine = {
             relPath: path.relative(srcPath, item.filePath),
             bucketPath: item.bucketPath,
             atime: item.stat.atime.getTime(),
@@ -216,7 +223,8 @@ function uploadFile(item, callback) {
             birthtime: item.stat.birthtime.getTime(),
             status: item.uploadStatus,
         };
-        logger(lineData);
+        logger(outputLine);
+        outputData.files.push(outputLine);
 
         callback(err);
     });
@@ -271,10 +279,10 @@ function upload(callback) {
 }
 
 function logFoldersMetadata() {
-    let lineData;
+    let outputLine;
 
     foldersToUploadMetadata.forEach((folder) => {
-        lineData = {
+        outputLine = {
             relPath: path.relative(srcPath, folder.folderPath),
             atime: folder.stat.atime.getTime(),
             mtime: folder.stat.mtime.getTime(),
@@ -282,11 +290,12 @@ function logFoldersMetadata() {
             birthtime: folder.stat.birthtime.getTime(),
             directory: 1,
         };
-        logger(lineData);
+        logger(outputLine);
+        outputData.files.push(outputLine);
     });
 }
 
-createOutputFile();
+createOutputFileTemp();
 
 upload((err) => {
     if (statusIntervalTimeout) {
@@ -294,7 +303,9 @@ upload((err) => {
     }
     printUploadProgress();
 
-    let summary = {};
+    let summary = {
+        duration: (new Date().getTime() - startTime) / 1000,
+    };
 
     if (err) {
         console.error(`\r\nUpload completed with error: ${err}`);
@@ -307,7 +318,7 @@ upload((err) => {
     logFoldersMetadata();
 
     console.info('Summary:');
-    console.info(`\tDuration: ${(new Date().getTime() - startTime) / 1000} seconds`);
+    console.info(`\tDuration: ${summary.duration} seconds`);
     console.info(`\tTotal uploaded files: ${totalUploadedFiles}`);
     console.info(`\tTotal uploaded files size: ${totalUploadedFilesSize}`);
     console.info(`\tTotal uploaded empty folders: ${totalUploadedEmptyFolders}`);
@@ -315,7 +326,6 @@ upload((err) => {
     console.info(`\tFailed files: ${totalFailedFiles}`);
     console.info(`\tFailed empty folders: ${totalFailedEmptyFolders}`);
 
-    summary.duration = `${(new Date().getTime() - startTime) / 1000} seconds`;
     summary.totalUploadedFiles = totalUploadedFiles;
     summary.totalUploadedFilesSize = totalUploadedFilesSize;
     summary.totalUploadedEmptyFolders = totalUploadedEmptyFolders;
@@ -323,5 +333,9 @@ upload((err) => {
     summary.totalFailedFiles = totalFailedFiles;
     summary.totalFailedEmptyFolders = totalFailedEmptyFolders;
 
-    closeOutputFile(summary);
+    closeOutputFileTemp(summary);
+
+    outputData.summary = summary;
+
+    createOutputFile();
 });
