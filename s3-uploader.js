@@ -62,12 +62,6 @@ let outputData = {
     files: [],
 };
 
-function createOutputFile() {
-    let outputStream = fs.createWriteStream(argv.outputFile);
-    outputStream.write(JSON.stringify(outputData));
-    outputStream.end();
-}
-
 function createOutputFileTemp() {
     outputStreamTemp = fs.createWriteStream(argv.outputFile + '.tmp');
     outputStreamTemp.write('{');
@@ -129,12 +123,13 @@ function getFoldersList(filePath, destArr, callback) {
 }
 
 function walkSync(currentDirPath) {
-    if (_.includes(excludeFolders, currentDirPath)) {
+    let dirName = path.basename(currentDirPath);
+    if (_.includes(excludeFolders, dirName)) {
         console.log(`Excluding ${currentDirPath} directory - in exclude list`);
         actualExcludedFolders.push(currentDirPath);
         return;
     }
-    if (includeFolders.length && currentDirPath.startsWith('t_') && !_.includes(includeFolders, currentDirPath)) {
+    if (includeFolders.length && dirName.startsWith('t_') && !_.includes(includeFolders, dirName)) {
         console.log(`Excluding ${currentDirPath} directory - not in tenants include list`);
         return;
     }
