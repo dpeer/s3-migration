@@ -48,7 +48,9 @@ function modifyFileTimestamps(file, callback) {
 function modifyFiles(callback) {
     startTime = new Date().getTime();
 
-    inputData.files.forEach((file) => {
+    let files = inputData.files.concat(inputData.directories);
+
+    files.forEach((file) => {
         let trgFile = path.join(trgPath, file.relPath);
         if (fs.existsSync(trgFile)) {
             filesToModify.push({

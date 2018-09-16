@@ -57,9 +57,25 @@ let totalFailedFilesSize = 0;
 let totalFailedEmptyFolders = 0;
 let statusIntervalTimeout;
 let outputStreamTemp;
+let startDate = new Date();
 let outputData = {
-    srcPath: srcPath,
+    startTime: startDate.toUTCString(),
+    runParams: {
+        srcPath: srcPath,
+        bucketName: argv.bucketName,
+        dstPath: argv.dstPath,
+        outputFile: path.resolve(argv.outputFile),
+        includeFolders: path.resolve(argv.i),
+        excludeFolders: path.resolve(argv.x),
+        dryRun: argv.dryRun,
+        partSize: argv.partSize,
+        queueSize: argv.queueSize,
+        parallelFiles: argv.parallelFiles,
+    },
+    summary: {},
     files: [],
+    emptyDirectories: [],
+    directories: [],
 };
 
 function createOutputFileTemp() {
@@ -131,22 +147,29 @@ function walkSync(currentDirPath) {
     }
     if (includeFolders.length && dirName.startsWith('t_') && !_.includes(includeFolders, dirName)) {
         console.log(`Excluding ${currentDirPath} directory - not in tenants include list`);
+        actualExcludedFolders.push(currentDirPath);
         return;
     }
 
+    let dirStat = fs.statSync(currentDirPath);
+    foldersToUploadMetadata.push({
+        folderPath: currentDirPath,
+        stat: dirStat,
+    });
+
     let fileNames = fs.readdirSync(currentDirPath);
     if (fileNames.length === 0) {
-        let stat = fs.statSync(currentDirPath);
         filesToUpload.push({
             filePath: currentDirPath,
             bucketPath: path.join(argv.dstPath, path.join(path.basename(srcPath), path.join(currentDirPath.substring(srcPath.length + 1), '.keep'))),
-            stat: stat,
+            stat: dirStat,
             uploadStatus: 0,
             isEmpty: true,
         });
         totalEmptyFoldersToUpload++;
         return;
     }
+
     fileNames.forEach((name) => {
         let filePath = path.join(currentDirPath, name);
         let stat = fs.statSync(filePath);
@@ -161,10 +184,6 @@ function walkSync(currentDirPath) {
             totalFilesToUpload++;
             totalSize += stat.size;
         } else if (stat.isDirectory()) {
-            foldersToUploadMetadata.push({
-                folderPath: filePath,
-                stat: stat,
-            });
             walkSync(filePath);
         }
     });
@@ -219,7 +238,11 @@ function uploadFile(item, callback) {
             status: item.uploadStatus,
         };
         logger(outputLine);
-        outputData.files.push(outputLine);
+        if (item.isEmpty) {
+            outputData.emptyDirectories.push(outputLine);
+        } else {
+            outputData.files.push(outputLine);
+        }
 
         callback(err);
     });
@@ -240,6 +263,7 @@ function uploadDir(dir, callback) {
             }
 
             walkSync(dir);
+            foldersToUploadMetadata.shift();    // remove source path
             console.log(`Uploading ${path.join(argv.bucketName, argv.dstPath)}:\r\n\tFiles: ${totalFilesToUpload}\r\n\tTotal size: ${totalSize}\r\n\tTotal empty folders: ${totalEmptyFoldersToUpload}`);
             if (argv.dryRun) {
                 return callback();
@@ -283,10 +307,9 @@ function logFoldersMetadata() {
             mtime: folder.stat.mtime.getTime(),
             ctime: folder.stat.ctime.getTime(),
             birthtime: folder.stat.birthtime.getTime(),
-            directory: 1,
         };
-        logger(outputLine);
-        outputData.files.push(outputLine);
+        //logger(outputLine);
+        outputData.directories.push(outputLine);
     });
 }
 
@@ -298,39 +321,35 @@ upload((err) => {
     }
     printUploadProgress();
 
-    let summary = {
-        duration: (new Date().getTime() - startTime) / 1000,
-    };
+    outputData.summary.duration = (new Date().getTime() - startTime) / 1000;
 
     if (err) {
         console.error(`\r\nUpload completed with error: ${err}`);
-        summary.status = `Upload completed with error: ${err}`;
+        outputData.summary.status = `Upload completed with error: ${err}`;
     } else {
         console.info(`\r\nUploaded completed. ${argv.dryRun ? '(Dry run)' : ''}`);
-        summary.status = `Uploaded completed. ${argv.dryRun ? '(Dry run)' : ''}`;
+        outputData.summary.status = `Uploaded completed. ${argv.dryRun ? '(Dry run)' : ''}`;
     }
 
     logFoldersMetadata();
 
     console.info('Summary:');
-    console.info(`\tDuration: ${summary.duration} seconds`);
+    console.info(`\tDuration: ${outputData.summary.duration} seconds`);
     console.info(`\tTotal uploaded files: ${totalUploadedFiles}`);
     console.info(`\tTotal uploaded files size: ${totalUploadedFilesSize}`);
     console.info(`\tTotal uploaded empty folders: ${totalUploadedEmptyFolders}`);
-    console.info(`\tExcluded Folders: ${actualExcludedFolders.join(`${path.delimiter} `)}`);
+    console.info(`\tExcluded Folders: ${actualExcludedFolders.join('; ')}`);
     console.info(`\tFailed files: ${totalFailedFiles}`);
     console.info(`\tFailed empty folders: ${totalFailedEmptyFolders}`);
 
-    summary.totalUploadedFiles = totalUploadedFiles;
-    summary.totalUploadedFilesSize = totalUploadedFilesSize;
-    summary.totalUploadedEmptyFolders = totalUploadedEmptyFolders;
-    summary.actualExcludedFolders = actualExcludedFolders;
-    summary.totalFailedFiles = totalFailedFiles;
-    summary.totalFailedEmptyFolders = totalFailedEmptyFolders;
+    outputData.summary.totalUploadedFiles = totalUploadedFiles;
+    outputData.summary.totalUploadedFilesSize = totalUploadedFilesSize;
+    outputData.summary.totalUploadedEmptyFolders = totalUploadedEmptyFolders;
+    outputData.summary.actualExcludedFolders = actualExcludedFolders;
+    outputData.summary.totalFailedFiles = totalFailedFiles;
+    outputData.summary.totalFailedEmptyFolders = totalFailedEmptyFolders;
 
-    closeOutputFileTemp(summary);
-
-    outputData.summary = summary;
+    closeOutputFileTemp(outputData.summary);
 
     createOutputFile();
 });
