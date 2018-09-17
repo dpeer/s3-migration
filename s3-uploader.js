@@ -199,10 +199,10 @@ function uploadFile(item, callback) {
             Body: item.isEmpty ? '' : fs.createReadStream(item.filePath)
         },
         tags: [
-            { Key: 'atime', Value: item.stat.atime.getTime() },
-            { Key: 'mtime', Value: item.stat.mtime.getTime() },
-            { Key: 'ctime', Value: item.stat.ctime.getTime() },
-            { Key: 'birthtime', Value: item.stat.birthtime.getTime() }
+            { Key: 'atime', Value: item.stat.atime.getTime().toString() },
+            { Key: 'mtime', Value: item.stat.mtime.getTime().toString() },
+            { Key: 'ctime', Value: item.stat.ctime.getTime().toString() },
+            { Key: 'birthtime', Value: item.stat.birthtime.getTime().toString() }
         ],
         service: S3
     });
