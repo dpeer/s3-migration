@@ -198,12 +198,12 @@ function uploadFile(item, callback) {
             Key: item.bucketPath,
             Body: item.isEmpty ? '' : fs.createReadStream(item.filePath)
         },
-        tags: [
-            { Key: 'atime', Value: item.stat.atime.getTime().toString() },
-            { Key: 'mtime', Value: item.stat.mtime.getTime().toString() },
-            { Key: 'ctime', Value: item.stat.ctime.getTime().toString() },
-            { Key: 'birthtime', Value: item.stat.birthtime.getTime().toString() }
-        ],
+        // tags: [
+        //     { Key: 'atime', Value: item.stat.atime.getTime().toString() },
+        //     { Key: 'mtime', Value: item.stat.mtime.getTime().toString() },
+        //     { Key: 'ctime', Value: item.stat.ctime.getTime().toString() },
+        //     { Key: 'birthtime', Value: item.stat.birthtime.getTime().toString() }
+        // ],
         service: S3
     });
 
