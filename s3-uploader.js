@@ -46,6 +46,7 @@ const excludeFolders = [];
 const actualExcludedFolders = [];
 const foldersToUploadMetadata = [];
 let startTime = 0;
+let uploadStartTime = 0;
 let totalEmptyFoldersToUpload = 0;
 let totalFilesToUpload = 0;
 let totalSize = 0;
@@ -249,7 +250,7 @@ function uploadFile(item, callback) {
 }
 
 function printUploadProgress() {
-    printProgress(`Status: Uploaded files: ${totalUploadedFiles} (${(totalUploadedFiles / totalFilesToUpload * 100).toFixed(2)}%); Size: ${totalUploadedFilesSize} bytes (${(totalUploadedFilesSize / totalSize * 100).toFixed(2)}%); Failed: ${totalFailedFiles}`);
+    printProgress(`Status: Uploaded files: ${totalUploadedFiles} (${(totalUploadedFiles / totalFilesToUpload * 100).toFixed(2)}%); Size: ${totalUploadedFilesSize} bytes (${(totalUploadedFilesSize / totalSize * 100).toFixed(2)}%); Failed: ${totalFailedFiles}; Elapsed time: ${(new Date().getTime() - uploadStartTime) / 1000} Seconds`);
 }
 
 function uploadDir(dir, callback) {
@@ -265,6 +266,7 @@ function uploadDir(dir, callback) {
             walkSync(dir);
             foldersToUploadMetadata.shift();    // remove source path
             console.log(`Uploading ${path.join(argv.bucketName, argv.dstPath)}:\r\n\tFiles: ${totalFilesToUpload}\r\n\tTotal size: ${totalSize}\r\n\tTotal empty folders: ${totalEmptyFoldersToUpload}`);
+            uploadStartTime = new Date().getTime();
             if (argv.dryRun) {
                 return callback();
             }
@@ -322,6 +324,7 @@ upload((err) => {
     printUploadProgress();
 
     outputData.summary.duration = (new Date().getTime() - startTime) / 1000;
+    outputData.summary.uploadDuration = outputData.summary.duration - ((uploadStartTime - startTime) / 1000);
 
     if (err) {
         console.error(`\r\nUpload completed with error: ${err}`);
@@ -335,6 +338,7 @@ upload((err) => {
 
     console.info('Summary:');
     console.info(`\tDuration: ${outputData.summary.duration} seconds`);
+    console.info(`\tUpload duration: ${outputData.summary.uploadDuration} seconds`);
     console.info(`\tTotal uploaded files: ${totalUploadedFiles}`);
     console.info(`\tTotal uploaded files size: ${totalUploadedFilesSize}`);
     console.info(`\tTotal uploaded empty folders: ${totalUploadedEmptyFolders}`);
