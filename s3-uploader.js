@@ -275,7 +275,7 @@ function uploadDir(dir, callback) {
             walkSync(dir);
 
             // remove source path
-            if ((foldersToUploadMetadata.length > 0) && (foldersToUploadMetadata[0] === srcPath)) {
+            if ((foldersToUploadMetadata.length > 0) && (foldersToUploadMetadata[0].folderPath === srcPath)) {
                 foldersToUploadMetadata.shift();
             }
             console.log(`Uploading ${path.join(argv.bucketName, argv.dstPath)}:\r\n\tFiles: ${totalFilesToUpload}\r\n\tTotal size: ${totalSize}\r\n\tTotal empty folders: ${totalEmptyFoldersToUpload}`);
