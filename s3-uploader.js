@@ -17,6 +17,7 @@ const argv = require('yargs')
     .describe('d', 'Path in bucket')
     .alias('d', 'dstPath')
     .default('d', '')
+    .describe('deltaFrom', 'Delta from time stamp (UTC)')
     .describe('o', 'Output log file path')
     .alias('o', 'outputFile')
     .describe('partSize', 'S3 upload part size (bytes)')
@@ -59,12 +60,14 @@ let totalFailedEmptyFolders = 0;
 let statusIntervalTimeout;
 let outputStreamTemp;
 let startDate = new Date();
+let deltaFrom = argv.deltaFrom ? argv.deltaFrom : 0;
 let outputData = {
     startTime: startDate.toUTCString(),
     runParams: {
         srcPath: srcPath,
         bucketName: argv.bucketName,
         dstPath: argv.dstPath,
+        deltaFrom: deltaFrom,
         outputFile: path.resolve(argv.outputFile),
         includeFolders: path.resolve(argv.i),
         excludeFolders: path.resolve(argv.x),
@@ -82,7 +85,7 @@ let outputData = {
 function createOutputFileTemp() {
     outputStreamTemp = fs.createWriteStream(argv.outputFile + '.tmp');
     outputStreamTemp.write('{');
-    outputStreamTemp.write(`"srcPath": "${srcPath}",\n`);
+    outputStreamTemp.write(`"runParams":${JSON.stringify(outputData)},\n`);
     outputStreamTemp.write('"files": [\n');
 }
 
@@ -115,20 +118,20 @@ function printProgress(progress){
 }
 
 function getFoldersList(filePath, destArr, callback) {
-    let includeFoldersPath = path.resolve(filePath);
+    let foldersPath = path.resolve(filePath);
 
-    if (!fs.existsSync(includeFoldersPath)) {
-        console.error(`Can't find ${includeFoldersPath} file!`);
+    if (!fs.existsSync(foldersPath)) {
+        console.error(`Can't find ${foldersPath} file!`);
         process.exit(-1);
     }
-    let stat = fs.statSync(includeFoldersPath);
+    let stat = fs.statSync(foldersPath);
     if (!stat.isFile()) {
-        console.error(`${includeFoldersPath} is not a file!`);
+        console.error(`${foldersPath} is not a file!`);
         process.exit(-1);
     }
 
     const rl = readline.createInterface({
-        input: fs.createReadStream(includeFoldersPath),
+        input: fs.createReadStream(foldersPath),
         crlfDelay: Infinity
     });
 
@@ -137,6 +140,10 @@ function getFoldersList(filePath, destArr, callback) {
     });
 
     rl.on('close', callback);
+}
+
+function isInDelta(stat) {
+    return (((stat.ctime.getTime() / 1000) >= deltaFrom) || ((stat.mtime.getTime() / 1000) >= deltaFrom));
 }
 
 function walkSync(currentDirPath) {
@@ -153,13 +160,15 @@ function walkSync(currentDirPath) {
     }
 
     let dirStat = fs.statSync(currentDirPath);
-    foldersToUploadMetadata.push({
-        folderPath: currentDirPath,
-        stat: dirStat,
-    });
+    if (isInDelta(dirStat)) {
+        foldersToUploadMetadata.push({
+            folderPath: currentDirPath,
+            stat: dirStat,
+        });
+    }
 
     let fileNames = fs.readdirSync(currentDirPath);
-    if (fileNames.length === 0) {
+    if ((fileNames.length === 0) && (isInDelta(dirStat))) {
         filesToUpload.push({
             filePath: currentDirPath,
             bucketPath: path.join(argv.dstPath, path.join(path.basename(srcPath), path.join(currentDirPath.substring(srcPath.length + 1), '.keep'))),
@@ -174,7 +183,7 @@ function walkSync(currentDirPath) {
     fileNames.forEach((name) => {
         let filePath = path.join(currentDirPath, name);
         let stat = fs.statSync(filePath);
-        if (stat.isFile()) {
+        if (stat.isFile() && isInDelta(stat)) {
             filesToUpload.push({
                 filePath: filePath,
                 bucketPath: path.join(argv.dstPath, path.join(path.basename(srcPath), filePath.substring(srcPath.length + 1))),
@@ -264,7 +273,11 @@ function uploadDir(dir, callback) {
             }
 
             walkSync(dir);
-            foldersToUploadMetadata.shift();    // remove source path
+
+            // remove source path
+            if ((foldersToUploadMetadata.length > 0) && (foldersToUploadMetadata[0] === srcPath)) {
+                foldersToUploadMetadata.shift();
+            }
             console.log(`Uploading ${path.join(argv.bucketName, argv.dstPath)}:\r\n\tFiles: ${totalFilesToUpload}\r\n\tTotal size: ${totalSize}\r\n\tTotal empty folders: ${totalEmptyFoldersToUpload}`);
             uploadStartTime = new Date().getTime();
             if (argv.dryRun) {
@@ -282,6 +295,7 @@ function upload(callback) {
     if (stat.isDirectory()) {       // upload directory recursively
         uploadDir(srcPath, callback);
     } else if (stat.isFile()) {    // upload single file
+        // todo: not tested
         totalSize += stat.size;
         console.log(`Uploading ${srcPath} to ${path.join(argv.bucketName, argv.dstPath)}. Total size: ${totalSize}`);
         if (argv.dryRun) {
@@ -296,6 +310,9 @@ function upload(callback) {
                 uploadStatus: 0
             },
             callback);
+    } else {
+        console.error(`Only directory and a single file are supported as source!`);
+        process.exit(-1);
     }
 }
 
