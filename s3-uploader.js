@@ -5,11 +5,9 @@ const async = require('async');
 const readline = require('readline');
 
 const argv = require('yargs')
-    .usage('Usage: $0 --accessKeyId accessKeyId --secretAccessKey secretAccessKey --region region -p srcPath -b bucketName -o outputFile [-d testPath] [--partSize number] [--queueSize number] [--parallelFiles number] [-i filePath] [-x filePath] [-t]')
-    .example('--accessKeyId 123 --secretAccessKey 456 --region us-east-1 -p /temp/s3 -b bucketName -o ./output/out-upload.json -d testPath --partSize 10485760 --queueSize 5 --parallelFiles 20 -i includeFoldersPath -x excludeFoldersPath -t')
-    .describe('accessKeyId', 'AWS access key ID')
-    .describe('secretAccessKey', 'AWS secret access key')
-    .describe('region', 'AWS region')
+    .usage('Usage: $0 --awsConfig awsConfigPath -p srcPath -b bucketName -o outputFile [-d testPath] [--deltaFrom number] [--partSize number] [--queueSize number] [--parallelFiles number] [-i filePath] [-x filePath] [-t]')
+    .example('--awsConfig awsConfigPath.json -p /temp/s3 -b bucketName -o ./output/out-upload.json -d testPath --deltaFrom 0 --partSize 10485760 --queueSize 5 --parallelFiles 20 -i ./input/include.txt -x ./input/exclude.txt -t')
+    .describe('awsConfigPath', 'AWS configuration json file')
     .describe('p', 'Path of folder or file')
     .alias('p', 'srcPath')
     .describe('b', 'S3 bucket')
@@ -17,7 +15,7 @@ const argv = require('yargs')
     .describe('d', 'Path in bucket')
     .alias('d', 'dstPath')
     .default('d', '')
-    .describe('deltaFrom', 'Delta from time stamp (UTC)')
+    .describe('deltaFrom', 'Delta from timestamp (UTC)')
     .describe('o', 'Output log file path')
     .alias('o', 'outputFile')
     .describe('partSize', 'S3 upload part size (bytes)')
@@ -25,27 +23,23 @@ const argv = require('yargs')
     .describe('queueSize', 'S3 upload queue size')
     .default('queueSize', 5)
     .describe('parallelFiles', 'Parallel files')
-    .default('parallelFiles', 20)
+    .default('parallelFiles', 100)
     .describe('i', 'Include folders file path')
     .describe('x', 'Exclude folders file path')
     .describe('t', 'Test without uploading to S3')
     .boolean('t')
     .alias('t', 'dryRun')
-    .demandOption(['accessKeyId', 'secretAccessKey', 'region', 'p', 'b', 'o'])
+    .demandOption(['awsConfig', 'p', 'b', 'o'])
     .argv;
 
 const srcPath = path.resolve(argv.srcPath);
 const AWS = require('aws-sdk');
-const S3 = new AWS.S3({
-    accessKeyId: argv.accessKeyId,
-    secretAccessKey: argv.secretAccessKey,
-    region: argv.region
-});
 const filesToUpload = [];
 const includeFolders = [];
 const excludeFolders = [];
 const actualExcludedFolders = [];
 const foldersToUploadMetadata = [];
+let s3Service = null;
 let startTime = 0;
 let uploadStartTime = 0;
 let totalEmptyFoldersToUpload = 0;
@@ -115,6 +109,15 @@ function createOutputFile() {
 function printProgress(progress){
     readline.cursorTo(process.stdout, 0);
     process.stdout.write(progress);
+}
+
+function createS3Service() {
+    const awsConfig = require(path.resolve(argv.awsConfig));
+    if (!awsConfig.accessKeyId || !awsConfig.secretAccessKey || !awsConfig.region) {
+        console.error(`${argv.awsConfig} doesn't contain required info!`);
+        process.exit(-1);
+    }
+    return new AWS.S3(awsConfig);
 }
 
 function getFoldersList(filePath, destArr, callback) {
@@ -214,7 +217,7 @@ function uploadFile(item, callback) {
         //     { Key: 'ctime', Value: item.stat.ctime.getTime().toString() },
         //     { Key: 'birthtime', Value: item.stat.birthtime.getTime().toString() }
         // ],
-        service: S3
+        service: s3Service
     });
 
     upload.send((err, data) => {
@@ -290,6 +293,7 @@ function uploadDir(dir, callback) {
 }
 
 function upload(callback) {
+    s3Service = createS3Service();
     startTime = new Date().getTime();
     let stat = fs.statSync(srcPath);
     if (stat.isDirectory()) {       // upload directory recursively
