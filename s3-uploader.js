@@ -106,6 +106,18 @@ function createOutputFile() {
     outputStream.end();
 }
 
+function createOutputObj(item) {
+    return {
+        relPath: path.relative(srcPath, item.filePath),
+        bucketPath: item.bucketPath,
+        atime: item.stat.atime.getTime(),
+        mtime: item.stat.mtime.getTime(),
+        ctime: item.stat.ctime.getTime(),
+        birthtime: item.stat.birthtime.getTime(),
+        status: item.uploadStatus,
+    };
+}
+
 function printProgress(progress){
     readline.cursorTo(process.stdout, 0);
     process.stdout.write(progress);
@@ -241,15 +253,7 @@ function uploadFile(item, callback) {
             item.uploadStatus = 1;
         }
 
-        let outputLine = {
-            relPath: path.relative(srcPath, item.filePath),
-            bucketPath: item.bucketPath,
-            atime: item.stat.atime.getTime(),
-            mtime: item.stat.mtime.getTime(),
-            ctime: item.stat.ctime.getTime(),
-            birthtime: item.stat.birthtime.getTime(),
-            status: item.uploadStatus,
-        };
+        let outputLine = createOutputObj(item);
         logger(outputLine);
         if (item.isEmpty) {
             outputData.emptyDirectories.push(outputLine);
@@ -282,10 +286,18 @@ function uploadDir(dir, callback) {
                 foldersToUploadMetadata.shift();
             }
             console.log(`Uploading ${path.join(argv.bucketName, argv.dstPath)}:\r\n\tFiles: ${totalFilesToUpload}\r\n\tTotal size: ${totalSize}\r\n\tTotal empty folders: ${totalEmptyFoldersToUpload}`);
-            uploadStartTime = new Date().getTime();
             if (argv.dryRun) {
+                filesToUpload.forEach((item) => {
+                    let outputLine = createOutputObj(item);
+                    if (item.isEmpty) {
+                        outputData.emptyDirectories.push(outputLine);
+                    } else {
+                        outputData.files.push(outputLine);
+                    }
+                });
                 return callback();
             }
+            uploadStartTime = new Date().getTime();
             statusIntervalTimeout = setInterval(printUploadProgress, 1000);
             async.eachLimit(filesToUpload, argv.parallelFiles, async.reflect(uploadFile), callback);
         }
@@ -345,7 +357,7 @@ upload((err) => {
     printUploadProgress();
 
     outputData.summary.duration = (new Date().getTime() - startTime) / 1000;
-    outputData.summary.uploadDuration = outputData.summary.duration - ((uploadStartTime - startTime) / 1000);
+    outputData.summary.uploadDuration = argv.dryRun ? 0 : outputData.summary.duration - ((uploadStartTime - startTime) / 1000);
 
     if (err) {
         console.error(`\r\nUpload completed with error: ${err}`);
