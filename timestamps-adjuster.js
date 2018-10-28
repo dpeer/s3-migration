@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const _ = require('lodash');
 const async = require('async');
+const readline = require('readline');
 
 const argv = require('yargs')
     .usage('Usage: $0 -i inputFilePath -p targetPath -o outputFile [--parallelFiles number] [-t]')
@@ -24,13 +25,27 @@ const inputData = require(argv.inputFile);
 const trgPath = path.resolve(argv.trgPath);
 const filesToModify = [];
 let startTime = 0;
+let modifyStartTime = 0;
 let totalModifiedFiles = 0;
 let totalFailedFiles = 0;
 let filesNotFound = [];
+let statusIntervalTimeout;
+let startDate = new Date();
 let outputData = {
+    startTime: startDate.toUTCString(),
     filesToModify: filesToModify,
     filesNotFound: filesNotFound,
+    summary: {},
 };
+
+function printProgress(progress){
+    readline.cursorTo(process.stdout, 0);
+    process.stdout.write(progress);
+}
+
+function printModifyProgress() {
+    printProgress(`Status: Modified files: ${totalModifiedFiles} (${(totalModifiedFiles / filesToModify.length * 100).toFixed(2)}%); Failed: ${totalFailedFiles}; Elapsed time: ${(new Date().getTime() - modifyStartTime) / 1000} Seconds`);
+}
 
 function modifyFileTimestamps(file, callback) {
     try {
@@ -69,6 +84,8 @@ function modifyFiles(callback) {
         return callback();
     }
 
+    modifyStartTime = new Date().getTime();
+    statusIntervalTimeout = setInterval(printModifyProgress, 1000);
     async.eachLimit(filesToModify, argv.parallelFiles, async.reflect(modifyFileTimestamps), callback);
 }
 
@@ -79,21 +96,28 @@ function createOutputFile() {
 }
 
 modifyFiles((err) => {
+    if (statusIntervalTimeout) {
+        clearInterval(statusIntervalTimeout);
+    }
+    printModifyProgress();
+
     if (err) {
-        console.error(`\r\nModify completed with error: ${err}`);
+        console.error(`\r\nModification completed with error: ${err}`);
     } else {
-        console.info(`\r\nUploaded completed. ${argv.dryRun ? '(Dry run)' : ''}`);
+        console.info(`\r\nModification completed. ${argv.dryRun ? '(Dry run)' : ''}`);
     }
 
-    let duration = (new Date().getTime() - startTime) / 1000;
+    outputData.summary.duration = (new Date().getTime() - startTime) / 1000;
+    outputData.summary.modifyDuration = argv.dryRun ? 0 : outputData.summary.duration - ((modifyStartTime - startTime) / 1000);
+
     console.info('Summary:');
-    console.info(`\tDuration: ${duration} seconds`);
+    console.info(`\tDuration: ${outputData.summary.duration} seconds`);
+    console.info(`\tModification duration: ${outputData.summary.modifyDuration} seconds`);
     console.info(`\tModified files: ${totalModifiedFiles}`);
     console.info(`\tFailed files: ${totalFailedFiles}`);
     console.info(`\tFiles not found: ${filesNotFound.length}`);
 
     outputData.summary = {
-        duration: duration,
         totalModifiedFiles: totalModifiedFiles,
         totalFailedFiles: totalFailedFiles,
         totalFilesNotFound: filesNotFound.length,

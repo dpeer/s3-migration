@@ -363,8 +363,8 @@ upload((err) => {
         console.error(`\r\nUpload completed with error: ${err}`);
         outputData.summary.status = `Upload completed with error: ${err}`;
     } else {
-        console.info(`\r\nUploaded completed. ${argv.dryRun ? '(Dry run)' : ''}`);
-        outputData.summary.status = `Uploaded completed. ${argv.dryRun ? '(Dry run)' : ''}`;
+        console.info(`\r\nUpload completed. ${argv.dryRun ? '(Dry run)' : ''}`);
+        outputData.summary.status = `Upload completed. ${argv.dryRun ? '(Dry run)' : ''}`;
     }
 
     logFoldersMetadata();
