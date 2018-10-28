@@ -16,6 +16,7 @@ const argv = require('yargs')
     .alias('d', 'dstPath')
     .default('d', '')
     .describe('deltaFrom', 'Delta from timestamp (UTC)')
+    .default('deltaFrom', 0)
     .describe('o', 'Output log file path')
     .alias('o', 'outputFile')
     .describe('partSize', 'S3 upload part size (bytes)')
@@ -54,14 +55,13 @@ let totalFailedEmptyFolders = 0;
 let statusIntervalTimeout;
 let outputStreamTemp;
 let startDate = new Date();
-let deltaFrom = argv.deltaFrom ? argv.deltaFrom : 0;
 let outputData = {
     startTime: startDate.toUTCString(),
     runParams: {
         srcPath: srcPath,
         bucketName: argv.bucketName,
         dstPath: argv.dstPath,
-        deltaFrom: deltaFrom,
+        deltaFrom: argv.deltaFrom,
         outputFile: path.resolve(argv.outputFile),
         includeFolders: path.resolve(argv.i),
         excludeFolders: path.resolve(argv.x),
@@ -158,7 +158,7 @@ function getFoldersList(filePath, destArr, callback) {
 }
 
 function isInDelta(stat) {
-    return (((stat.ctime.getTime() / 1000) >= deltaFrom) || ((stat.mtime.getTime() / 1000) >= deltaFrom));
+    return (((stat.ctime.getTime() / 1000) >= argv.deltaFrom) || ((stat.mtime.getTime() / 1000) >= argv.deltaFrom));
 }
 
 function walkSync(currentDirPath) {
