@@ -33,6 +33,13 @@ let statusIntervalTimeout;
 let startDate = new Date();
 let outputData = {
     startTime: startDate.toUTCString(),
+    runParams: {
+        inputFile: path.resolve(argv.inputFile),
+        trgPath: trgPath,
+        outputFile: path.resolve(argv.outputFile),
+        dryRun: argv.dryRun,
+        parallelFiles: argv.parallelFiles,
+    },
     filesToModify: filesToModify,
     filesNotFound: filesNotFound,
     summary: {},
